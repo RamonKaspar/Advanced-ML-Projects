@@ -42,7 +42,14 @@ def main():
     print("X_train:", X_train_selected.shape, "y_train:", y_train_without_outliers.shape, "X_test:", X_test_selected.shape)
 
     # == FINAL REGRESSION MODEL ==
-    model = linear_model.LassoCV(alphas=[0.01, 0.1, 1, 10, 100], cv=5, random_state=RANDOM_STATE)
+    # model = linear_model.LassoCV(alphas=[0.01, 0.1, 1, 10, 100], cv=5, random_state=RANDOM_STATE)
+    
+    model_1 = svm.SVR(C=40)
+    model_2 = ensemble.GradientBoostingRegressor(loss='huber', learning_rate=0.15, random_state=RANDOM_STATE)
+    model_3 = ensemble.ExtraTreesRegressor(n_estimators=70, random_state=RANDOM_STATE)
+    model_4 = ensemble.RandomForestRegressor(n_estimators=70, random_state=RANDOM_STATE)
+    final_estimator = ensemble.VotingRegressor(estimators=[('ridge', linear_model.Ridge()), ('lasso', linear_model.Lasso())])
+    model = ensemble.StackingRegressor(estimators=[('model 1', model_1), ('model 2', model_2), ('model 3', model_3), ('model 4', model_4)], final_estimator=final_estimator)
 
     # Cross-validated R^2 score (using 5 folds)
     y_pred_cv = model_selection.cross_val_predict(model, X_train_selected, y_train_without_outliers, cv=5)
