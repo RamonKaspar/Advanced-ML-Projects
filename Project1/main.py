@@ -26,31 +26,24 @@ def main():
     inliers_mask = outlier_detection(X_train_imputed, y_train, method=["IsolationForest"], perform_pca=True, pca_variance=0.2)
     
     # Remove all indices from X_train that are not in X_train_without_outliers
-    X_train_without_outliers = X_train_imputed[inliers_mask]
+    X_train_without_outliers = X_train[inliers_mask]
     y_train_without_outliers = y_train[inliers_mask]
     
     # Preprocess data again, now using StandardScaler (as outliers are removed) and impute missing values
     print("\n== Preprocessing ==")
     X_train_without_outliers, X_test = standardize_data(X_train_without_outliers, method='standard', X_test=X_test)
-    X_train_without_outliers, X_test = fill_missing_values(X_train_without_outliers, strategy='knn', X_test=X_test)
+    X_train_final, X_test_final = fill_missing_values(X_train_without_outliers, strategy='knn', X_test=X_test)
     
     # == FEATURE SELECTION ==
     print("\n== Feature Selection ==")
-    X_train_selected, X_test_selected = select_features(X_train_without_outliers, y_train_without_outliers, X_test, method=['VarianceThreshold', 'SelectKBest', 'Lasso'], variance_threshold=0.0, k=200, alpha=0.1)
+    X_train_selected, X_test_selected = select_features(X_train_final, y_train_without_outliers, X_test_final, method=['VarianceThreshold', 'SelectKBest', 'Lasso'], variance_threshold=0.0, k=200, alpha=0.1)
     
     print("Shape Matrices after Outlier Detection, Preprocessing, and Feature Selection:")
     print("X_train:", X_train_selected.shape, "y_train:", y_train_without_outliers.shape, "X_test:", X_test_selected.shape)
 
     # == FINAL REGRESSION MODEL ==
-    # model = linear_model.LassoCV(alphas=[0.01, 0.1, 1, 10, 100], cv=5, random_state=RANDOM_STATE)
+    model = linear_model.LassoCV(alphas=[0.01, 0.1, 1, 10, 100], cv=5, random_state=RANDOM_STATE)
     
-    model_1 = svm.SVR(C=40)
-    model_2 = ensemble.GradientBoostingRegressor(loss='huber', learning_rate=0.15, random_state=RANDOM_STATE)
-    model_3 = ensemble.ExtraTreesRegressor(n_estimators=70, random_state=RANDOM_STATE)
-    model_4 = ensemble.RandomForestRegressor(n_estimators=70, random_state=RANDOM_STATE)
-    final_estimator = ensemble.VotingRegressor(estimators=[('ridge', linear_model.Ridge()), ('lasso', linear_model.Lasso())])
-    model = ensemble.StackingRegressor(estimators=[('model 1', model_1), ('model 2', model_2), ('model 3', model_3), ('model 4', model_4)], final_estimator=final_estimator)
-
     # Cross-validated R^2 score (using 5 folds)
     y_pred_cv = model_selection.cross_val_predict(model, X_train_selected, y_train_without_outliers, cv=5)
     r2 = metrics.r2_score(y_train_without_outliers, y_pred_cv)
@@ -94,7 +87,6 @@ def preprocess_data(X_train, X_test, threshold_nan: float, threshold_zero: float
     # Remove duplicate rows
     duplicated_rows = X_train[X_train.duplicated()]
     X_train = X_train.loc[~X_train.duplicated(), :]
-    X_test = X_test.loc[~X_test.duplicated(), :]
     print(f"Removed {len(duplicated_rows)} duplicate rows.")
     
     return X_train, X_test
@@ -111,10 +103,12 @@ def standardize_data(X_train, method: str, X_test = None):
         raise ValueError(f"Unknown method: '{method}'. Use 'standard' or 'robust'.")
     
     print(f"Standardizing data using {method} scaler.")
-    X_train_scaled = scaler.fit_transform(X_train)
+    scaler.fit(X_train)
+    X_train_scaled = scaler.transform(X_train)
     
     if X_test is not None:
-        return X_train, scaler.transform(X_test)
+        X_test_scaled = scaler.transform(X_test)
+        return X_train_scaled, X_test_scaled
     return X_train_scaled, None
 
 
@@ -134,11 +128,13 @@ def fill_missing_values(X_train, strategy: str, X_test=None):
         raise ValueError(F"The strategy {strategy} is invalid.")
     
     print(f"Imputing missing values using {strategy} strategy.")
-    X_train_imputed = imputer.fit_transform(X_train)
+    imputer.fit(X_train)
+    X_train_imputed = imputer.transform(X_train)
     
     # If X_test is provided, impute missing values in X_test
     if X_test is not None:
-        return X_train_imputed, imputer.transform(X_test)  # use the same statistics as training set
+        X_test_imputed = imputer.transform(X_test)
+        return X_train_imputed, X_test_imputed  # use the same statistics as training set
 
     return X_train_imputed, None
 
@@ -162,17 +158,17 @@ def outlier_detection(X_train, y_train, method: list[str], perform_pca: bool = F
     
     if 'OneClassSVM' in method:
         outlier_det = svm.OneClassSVM()
-        predictions = outlier_det.fit_predict(X_train)
+        predictions = outlier_det.fit_predict(X_train, y_train)
         combined_predictions = np.logical_and(combined_predictions, predictions == 1)
     
     if 'IsolationForest' in method:
         outlier_det = ensemble.IsolationForest(random_state=RANDOM_STATE)   # Set random state for reproducibility
-        predictions = outlier_det.fit_predict(X_train)
+        predictions = outlier_det.fit_predict(X_train, y_train)
         combined_predictions = np.logical_and(combined_predictions, predictions == 1)
     
     if 'LocalOutlierFactor' in method:
         outlier_det = neighbors.LocalOutlierFactor()
-        predictions = outlier_det.fit_predict(X_train)
+        predictions = outlier_det.fit_predict(X_train, y_train)
         combined_predictions = np.logical_and(combined_predictions, predictions == 1)
     
     # Filter out the outliers
