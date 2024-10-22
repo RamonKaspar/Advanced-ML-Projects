@@ -23,7 +23,7 @@ def main():
     # Impute missing values (use median as it is less sensitive to outliers)
     X_train_imputed, _ = fill_missing_values(X_train_scaled, strategy='median')
     # Remove outliers
-    inliers_mask = outlier_detection(X_train_imputed, y_train, method=["IsolationForest"], perform_pca=True, pca_variance=0.2)
+    inliers_mask = outlier_detection(X_train_imputed, y_train, method=["OneClassSVM", "LocalOutlierFactor"], perform_pca=True, pca_variance=0.2)
     
     # Remove all indices from X_train that are not in X_train_without_outliers
     X_train_without_outliers = X_train[inliers_mask]
@@ -36,19 +36,18 @@ def main():
     
     # == FEATURE SELECTION ==
     print("\n== Feature Selection ==")
-    X_train_selected, X_test_selected = select_features(X_train_final, y_train_without_outliers, X_test_final, method=['VarianceThreshold', 'SelectKBest', 'Lasso'], variance_threshold=0.0, k=200, alpha=0.1)
+    X_train_selected, X_test_selected = select_features(X_train_final, y_train_without_outliers, X_test_final, method=['Lasso'], variance_threshold=None, k=None, alpha=0.14)
     
     print("Shape Matrices after Outlier Detection, Preprocessing, and Feature Selection:")
     print("X_train:", X_train_selected.shape, "y_train:", y_train_without_outliers.shape, "X_test:", X_test_selected.shape)
 
     # == FINAL REGRESSION MODEL ==
-    model = linear_model.LassoCV(alphas=[0.01, 0.1, 1, 10, 100], cv=5, random_state=RANDOM_STATE)
+    model = linear_model.LassoCV(cv=5, random_state=RANDOM_STATE)
     
     # Cross-validated R^2 score (using 5 folds)
-    y_pred_cv = model_selection.cross_val_predict(model, X_train_selected, y_train_without_outliers, cv=5)
-    r2 = metrics.r2_score(y_train_without_outliers, y_pred_cv)
-    print(f"Cross-validated R^2: {r2}")
-
+    cv_scores = model_selection.cross_val_score(model, X_train_selected, y_train_without_outliers, cv=10, scoring='r2')
+    print(f"Cross-validated R^2 Score: Mean: {np.mean(cv_scores):.4f}, STD: {np.std(cv_scores):.4f}")
+    
     # Create the final submission
     create_submission(model, X_train_selected, y_train_without_outliers, X_test_selected)
 
@@ -157,18 +156,21 @@ def outlier_detection(X_train, y_train, method: list[str], perform_pca: bool = F
     combined_predictions = np.ones(X_train.shape[0])
     
     if 'OneClassSVM' in method:
-        outlier_det = svm.OneClassSVM()
-        predictions = outlier_det.fit_predict(X_train, y_train)
+        outlier_det = svm.OneClassSVM(kernel='linear', nu=0.01)
+        predictions = outlier_det.fit_predict(X_train)
+        print(f"Removed {np.sum(predictions == -1)} outliers using OneClassSVM.")
         combined_predictions = np.logical_and(combined_predictions, predictions == 1)
     
     if 'IsolationForest' in method:
         outlier_det = ensemble.IsolationForest(random_state=RANDOM_STATE)   # Set random state for reproducibility
-        predictions = outlier_det.fit_predict(X_train, y_train)
+        predictions = outlier_det.fit_predict(X_train)
+        print(f"Removed {np.sum(predictions == -1)} outliers using IsolationForest.")
         combined_predictions = np.logical_and(combined_predictions, predictions == 1)
     
     if 'LocalOutlierFactor' in method:
         outlier_det = neighbors.LocalOutlierFactor()
-        predictions = outlier_det.fit_predict(X_train, y_train)
+        predictions = outlier_det.fit_predict(X_train)
+        print(f"Removed {np.sum(predictions == -1)} outliers using LocalOutlierFactor.")
         combined_predictions = np.logical_and(combined_predictions, predictions == 1)
     
     # Filter out the outliers
