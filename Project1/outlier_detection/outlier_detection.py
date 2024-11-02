@@ -43,30 +43,35 @@ def main():
     outlier_detection_techniques = ['OneClassSVM', 'IsolationForest', 'LocalOutlierFactor']
     
     for outlier_det_method in outlier_detection_techniques:
-        fig, axs = plt.subplots(len(imputation_techniques), len(standardize_techniques), figsize=(20, 20))
-        for i, impute_method in enumerate(imputation_techniques):
-            for j, standardize_method in enumerate(standardize_techniques):
-                X_train_imputed, X_test_imputed = fill_missing_values(X_train, impute_method, X_test)
-                X_train_scaled, X_test_scaled = standardize_data(X_train_imputed, standardize_method, X_test_imputed)
-                # Perform outlier detection on PCA-transformed data
-                inliers_mask, outlier_detector = outlier_detection(X_train_scaled, outlier_det_method)
-                # Plot PCA with outliers marked and decision boundary
-                plot_pca(axs[i, j], X_train_scaled, X_test_scaled, f"Impute: {impute_method}\nScale: {standardize_method}", inliers_mask=inliers_mask, outlier_detector=outlier_detector)
-                # Describe and analyze the distribution of the data, with and without outliers
-                describe_and_analyze_distribution(X_train_scaled, X_test_scaled, f"Impute: {impute_method}, Scale: {standardize_method}, Outliers Detection: None")
-                describe_and_analyze_distribution(X_train_scaled[inliers_mask], X_test_scaled, f"Impute: {impute_method}, Scale: {standardize_method}, Outliers Detection: {outlier_det_method}")
-         # Set the overall figure title
-        fig.suptitle(f'Outlier Detection: {outlier_det_method}', fontsize=16)
-        plt.tight_layout()
-        plt.savefig(f'{output_dir}impute_scale_pca_outliers_{outlier_det_method}.pdf')
+        for pca_enabled in [True, False]:
+            fig, axs = plt.subplots(len(imputation_techniques), len(standardize_techniques), figsize=(20, 20))
+            for i, impute_method in enumerate(imputation_techniques):
+                for j, standardize_method in enumerate(standardize_techniques):
+                    technique_name = f"Impute: {impute_method}, Scale: {standardize_method}, Outliers Detection: {outlier_det_method} (PCA {'Enabled' if pca_enabled else 'Disabled'})"
+                    X_train_imputed, X_test_imputed = fill_missing_values(X_train, impute_method, X_test)
+                    X_train_scaled, X_test_scaled = standardize_data(X_train_imputed, standardize_method, X_test_imputed)
+                    # Perform outlier detection on PCA-transformed data
+                    inliers_mask, outlier_detector = outlier_detection(X_train_scaled, outlier_det_method, pca_enabled)
+                    # Plot PCA with outliers marked and decision boundary
+                    plot_pca(axs[i, j], X_train_scaled, X_test_scaled, f"Impute: {impute_method}\nScale: {standardize_method}", inliers_mask=inliers_mask, outlier_detector=outlier_detector)
+                    # Describe and analyze the distribution of the data, with and without outliers
+                    describe_and_analyze_distribution(X_train_scaled, X_test_scaled, f"Impute: {impute_method}, Scale: {standardize_method}, Outliers Detection: None")
+                    describe_and_analyze_distribution(X_train_scaled[inliers_mask], X_test_scaled, technique_name)
+            # Set the overall figure title
+            if pca_enabled:
+                fig.suptitle(f'Outlier Detection: {outlier_det_method} (PCA Enabled)')
+                plt.savefig(f'{output_dir}impute_scale_pca_outliers_{outlier_det_method}_with_pca.pdf')
+            else:
+                fig.suptitle(f'Outlier Detection: {outlier_det_method}')
+                plt.savefig(f'{output_dir}impute_scale_pca_outliers_{outlier_det_method}_without_pca.pdf')
     
     # Find the best methods for imputing and scaling the data
     find_best_methods(n=5)
     
-    # The best method is (Impute: most_frequent, Scale: quantile, Outliers Detection: IsolationForest)
+    # One of the best methods is (Impute: most_frequent, Scale: quantile, Outliers Detection: IsolationForest)
     X_train_imputed, X_test_imputed = fill_missing_values(X_train, 'most_frequent', X_test)
     X_train_scaled, X_test_scaled = standardize_data(X_train_imputed, 'quantile', X_test_imputed)
-    inliers_mask, outlier_detector = outlier_detection(X_train_scaled, 'IsolationForest')
+    inliers_mask, outlier_detector = outlier_detection(X_train_scaled, 'IsolationForest', pca_enabled=True)
     fig, ax = plt.subplots(figsize=(10, 10))
     plot_pca(ax, X_train_scaled, X_test_scaled, "IsolationForest (Impute: most_frequent, Scale: quantile)", inliers_mask=inliers_mask, outlier_detector=outlier_detector)
     plt.savefig(f'{output_dir}best_method.pdf')
@@ -124,13 +129,14 @@ def fill_missing_values(X_train, strategy: str, X_test=None):
 
     return X_train_imputed, None
 
-def outlier_detection(X_train, method: str):
+def outlier_detection(X_train, method: str, pca_enabled: bool):
     """
     Detect outliers using the specified method.
     Methods available: 'OneClassSVM', 'IsolationForest', 'LocalOutlierFactor'.
     """
-    pca = decomposition.PCA(n_components=2, random_state=RANDOM_STATE)
-    X_train = pca.fit_transform(X_train)
+    if pca_enabled:
+        pca = decomposition.PCA(n_components=2, random_state=RANDOM_STATE)
+        X_train = pca.fit_transform(X_train)
         
     if method == 'OneClassSVM':
         outlier_det = svm.OneClassSVM(nu=0.05, gamma='scale')
@@ -172,20 +178,26 @@ def plot_pca(ax, X_train, X_test, title, inliers_mask=None, outlier_detector=Non
     # Plot test data
     ax.scatter(X_test_pca[:, 0], X_test_pca[:, 1], alpha=0.5, label='Test', color='orange')
     
-    # Plot decision boundary if outlier_detector is provided
+    # Plot decision boundary if outlier_detector is provided and was trained on PCA-transformed data
     if outlier_detector is not None:
-        xx, yy = np.meshgrid(
-            np.linspace(X_train_pca[:, 0].min() - 1, X_train_pca[:, 0].max() + 1, 100),
-            np.linspace(X_train_pca[:, 1].min() - 1, X_train_pca[:, 1].max() + 1, 100)
-        )
-        grid = np.c_[xx.ravel(), yy.ravel()]
-        Z = outlier_detector.decision_function(grid)
-        Z = Z.reshape(xx.shape)
-        # Plot decision boundary
-        ax.contour(xx, yy, Z, levels=[0], linewidths=2, colors='black')
-        # Plot number of outliers as text in the plot
-        n_outliers = np.sum(~inliers_mask)
-        ax.text(0.95, 0.05, f"Outliers: {n_outliers}", transform=ax.transAxes, ha='right', va='bottom')
+        # Check if the outlier detector was trained on data with 2 features
+        if outlier_detector.n_features_in_ == 2:
+            xx, yy = np.meshgrid(
+                np.linspace(X_train_pca[:, 0].min() - 1, X_train_pca[:, 0].max() + 1, 100),
+                np.linspace(X_train_pca[:, 1].min() - 1, X_train_pca[:, 1].max() + 1, 100)
+            )
+            grid = np.c_[xx.ravel(), yy.ravel()]
+            Z = outlier_detector.decision_function(grid)
+            Z = Z.reshape(xx.shape)
+            # Plot decision boundary
+            ax.contour(xx, yy, Z, levels=[0], linewidths=2, colors='black')
+            # Plot number of outliers as text in the plot
+            n_outliers = np.sum(~inliers_mask)
+            ax.text(0.95, 0.05, f"Outliers: {n_outliers}", transform=ax.transAxes, ha='right', va='bottom')
+        else:
+            # Skip plotting the decision boundary
+            n_outliers = np.sum(~inliers_mask)
+            ax.text(0.95, 0.05, f"Outliers: {n_outliers}", transform=ax.transAxes, ha='right', va='bottom')
 
     ax.legend()
     ax.set_title(title)
@@ -282,6 +294,8 @@ def describe_and_analyze_distribution(X_train, X_test, method: str):
     
     # Store the results for the method
     results[method] = comparison_results
+    
+    # TODO: Add more statistical tests to compare the distributions
 
 def find_best_methods(n=3):
     """
