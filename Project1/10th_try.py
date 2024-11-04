@@ -2,8 +2,8 @@ import numpy as np
 import pandas as pd
 from sklearn import ensemble, impute, linear_model, model_selection, svm, feature_selection, decomposition, preprocessing, neighbors, metrics
 
-from sklearnex import patch_sklearn
-patch_sklearn()
+# from sklearnex import patch_sklearn
+# patch_sklearn()
 
 RANDOM_STATE = 69   # For reproducibility
 
@@ -27,7 +27,7 @@ def main():
     # == OUTLIER DETECTION ==
     print("\n== Outlier Detection ==")
     # Standardize data, use RobustScalar as outliers might be present
-    X_train_scaled, _ = standardize_data(X_train, method='quantile')
+    X_train_scaled, _ = standardize_data(X_train, method='robust')
     # Impute missing values (use median as it is less sensitive to outliers)
     X_train_imputed, _ = fill_missing_values(X_train_scaled, strategy='knn')
     # Remove outliers
