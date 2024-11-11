@@ -34,9 +34,9 @@ def main():
     fig, axs = plt.subplots(len(imputation_techniques), len(standardize_techniques), figsize=(20, 20))
     for i, impute_method in enumerate(imputation_techniques):
         for j, standardize_method in enumerate(standardize_techniques):
-            X_train_imputed, X_test_imputed = fill_missing_values(X_train, impute_method, X_test)
-            X_train_scaled, X_test_scaled = standardize_data(X_train_imputed, standardize_method, X_test_imputed)
-            plot_pca(axs[i, j], X_train_scaled, X_test_scaled, f"PCA (Impute: {impute_method}, Scale: {standardize_method})")
+            X_train_scaled, X_test_scaled = standardize_data(X_train, standardize_method, X_test)
+            X_train_imputed, X_test_imputed = fill_missing_values(X_train_scaled, impute_method, X_test_scaled)
+            plot_pca(axs[i, j], X_train_imputed, X_test_imputed, f"PCA (Impute: {impute_method}, Scale: {standardize_method})")
     plt.savefig(f'{output_dir}impute_scale_pca.pdf')
     
     # == OUTLIER DETECTION ==
@@ -48,15 +48,15 @@ def main():
             for i, impute_method in enumerate(imputation_techniques):
                 for j, standardize_method in enumerate(standardize_techniques):
                     technique_name = f"Impute: {impute_method}, Scale: {standardize_method}, Outliers Detection: {outlier_det_method} (PCA {'Enabled' if pca_enabled else 'Disabled'})"
-                    X_train_imputed, X_test_imputed = fill_missing_values(X_train, impute_method, X_test)
-                    X_train_scaled, X_test_scaled = standardize_data(X_train_imputed, standardize_method, X_test_imputed)
+                    X_train_scaled, X_test_scaled = standardize_data(X_train, standardize_method, X_test)
+                    X_train_imputed, X_test_imputed = fill_missing_values(X_train_scaled, impute_method, X_test_scaled)
                     # Perform outlier detection on PCA-transformed data
-                    inliers_mask, outlier_detector = outlier_detection(X_train_scaled, outlier_det_method, pca_enabled)
+                    inliers_mask, outlier_detector = outlier_detection(X_train_imputed, outlier_det_method, pca_enabled)
                     # Plot PCA with outliers marked and decision boundary
-                    plot_pca(axs[i, j], X_train_scaled, X_test_scaled, f"Impute: {impute_method}\nScale: {standardize_method}", inliers_mask=inliers_mask, outlier_detector=outlier_detector)
+                    plot_pca(axs[i, j], X_train_imputed, X_test_imputed, f"Impute: {impute_method}\nScale: {standardize_method}", inliers_mask=inliers_mask, outlier_detector=outlier_detector)
                     # Describe and analyze the distribution of the data, with and without outliers
-                    describe_and_analyze_distribution(X_train_scaled, X_test_scaled, f"Impute: {impute_method}, Scale: {standardize_method}, Outliers Detection: None")
-                    describe_and_analyze_distribution(X_train_scaled[inliers_mask], X_test_scaled, technique_name)
+                    describe_and_analyze_distribution(X_train_imputed, X_test_imputed, f"Impute: {impute_method}, Scale: {standardize_method}, Outliers Detection: None")
+                    describe_and_analyze_distribution(X_train_imputed[inliers_mask], X_test_imputed, technique_name)
             # Set the overall figure title
             if pca_enabled:
                 fig.suptitle(f'Outlier Detection: {outlier_det_method} (PCA Enabled)')
@@ -68,12 +68,12 @@ def main():
     # Find the best methods for imputing and scaling the data
     find_best_methods(n=5)
     
-    # One of the best methods is (Impute: most_frequent, Scale: quantile, Outliers Detection: IsolationForest)
-    X_train_imputed, X_test_imputed = fill_missing_values(X_train, 'most_frequent', X_test)
-    X_train_scaled, X_test_scaled = standardize_data(X_train_imputed, 'quantile', X_test_imputed)
-    inliers_mask, outlier_detector = outlier_detection(X_train_scaled, 'IsolationForest', pca_enabled=True)
+    # One of the best methods is (Impute: knn, Scale: robust, Outliers Detection: IsolationForest)
+    X_train_scaled, X_test_scaled = standardize_data(X_train, 'robust', X_test)
+    X_train_imputed, X_test_imputed = fill_missing_values(X_train_scaled, 'knn', X_test_scaled)
+    inliers_mask, outlier_detector = outlier_detection(X_train_imputed, 'IsolationForest', pca_enabled=True)
     fig, ax = plt.subplots(figsize=(10, 10))
-    plot_pca(ax, X_train_scaled, X_test_scaled, "IsolationForest (Impute: most_frequent, Scale: quantile)", inliers_mask=inliers_mask, outlier_detector=outlier_detector)
+    plot_pca(ax, X_train_imputed, X_test_imputed, "Best Method: (Scale: Robust, Impute: KNN, Outliers: IsolationForest)", inliers_mask=inliers_mask, outlier_detector=outlier_detector)
     plt.savefig(f'{output_dir}best_method.pdf')
     
 

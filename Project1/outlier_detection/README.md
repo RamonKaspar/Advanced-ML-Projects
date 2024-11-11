@@ -28,8 +28,6 @@ A general observation is, that PCA transformation really results in a much bette
 
 In order to compare how well the outlier detection method worked, we compared the processed training distribution to the test distribution. We calculated the mean, variance, skewness, and kurtosis of the training and test data, with and without outliers.
 
-The pipeline’s evaluation results demonstrate that the best-performing setup utilizes `most_frequent` imputation, `quantile` scaling, and `IsolationForest` detection, as seen in the PCA visualization (`best_method.pdf`). Nearly as good is the `most_frequent` imputation, `quantile` scaling, and `OneClassSVM` detection.
-
-Here we show one of the best performing method, namely `IsolationForest` (with PCA transformation to 2 components) with `most_frequent` imputation and `quantile` scaling:
+Here we show one of the best performing method, namely `IsolationForest` (with PCA transformation to 2 components) with `knn` imputation and `robust` scaling:
 
 ![alt text](plots/best_method.png)
