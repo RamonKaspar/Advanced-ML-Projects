@@ -12,8 +12,9 @@ This project tackles the task of predicting a person’s age based solely on bra
 
 Our workflow includes handling missing data, identifying and removing outliers, selecting the most relevant features, and fine-tuning regression models. The goal: to develop a model that can generalize well on unseen data.
 
-- **Outlier Detection**: To identify outliers, we first scaled the data using `RobustScaler` to mitigate the influence of outliers on scaling. We then imputed missing values with KNN-imputation and applied PCA for dimensionality reduction to 2D. Using the reduced dataset, we implemented the Isolation Forest algorithm to classify outliers, identifying 61 outliers from the initial 1212 samples.
-  ![alt text](Project1/outlier_detection/plots/best_method.png)
+- **Outlier Detection**:
+  <img align="right" height="140" src="Project1/outlier_detection/plots/best_method.png"></img>
+  To identify outliers, we first scaled the data using `RobustScaler` to mitigate the influence of outliers on scaling. We then imputed missing values with KNN-imputation and applied PCA for dimensionality reduction to 2D. Using the reduced dataset, we implemented the Isolation Forest algorithm to classify outliers, identifying 61 outliers from the initial 1212 samples.
 
 - **Missing Values Imputation**: After outlier removal, we standardized the data with `StandardScaler` and again applied KNN-imputation to address any remaining missing values.
 
