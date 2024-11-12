@@ -1,0 +1,3 @@
+# Data files for project 2 are too large to be stored on GitHub --> ignore them
+Project2/data/*.csv
+Project2/data/*.parquet
