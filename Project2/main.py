@@ -18,7 +18,7 @@ SAMPLING_RATE = 300
 SAMPLES = None
 # Whether to make predictions on the test set, if False, we use a validation set. If True, we use the 
 # full training set to train the model and make predictions on the test set.
-PREDICTION = False    
+PREDICTION = True    
 # Whether to recompute features or use the precomputed features
 RECOMPUTE_FEATURES = True
 
@@ -33,10 +33,11 @@ def main():
     y_train = pd.read_parquet('data/train.parquet')['y'].values.ravel()
     
     # Print initial class distribution
-    print_class_distribution("Full dataset", y_train, plot=True)
+    print_class_distribution("Full dataset", y_train, plot=False)
     
-    # Create train/test split (90/10)
+    # Craft a validation set if we are not predicting, otherwise use the full training set
     if not PREDICTION:
+        # Create train/test split (90/10)
         X_train, X_test, y_train, y_test = model_selection.train_test_split(
             X_train, y_train, test_size=0.1, random_state=RANDOM_STATE,
             stratify=y_train  # Add stratification to maintain class distribution
@@ -95,7 +96,8 @@ def main():
     hgb = ensemble.HistGradientBoostingClassifier(
         random_state=RANDOM_STATE,
         max_iter=1000,
-        # verbose=1
+        # verbose=1,
+        # class_weight='balanced'  # Because we have imbalanced classes, NOTE: We get a worse f1-micro score (but better f1-macro)
     )
     
     # Predict a score using cross-validation
@@ -294,8 +296,8 @@ def calculate_statistical_features(features):
         statistics[f'{feature_name}_var'] = np.var(values)              if len(values) > 0 else np.nan
         statistics[f'{feature_name}_ptp'] = np.ptp(values)              if len(values) > 0 else np.nan # Peak-to-peak
         statistics[f'{feature_name}_entropy'] = entropy(values)         if len(values) > 0 else np.nan
-        statistics[f'{feature_name}_skewness'] = stats.skew(values)     if len(values) > 0 else np.nan  # Skewness, measure of asymmetry
-        statistics[f'{feature_name}_kurtosis'] = stats.kurtosis(values) if len(values) > 0 else np.nan  # Kurtosis, measure of tailedness
+        statistics[f'{feature_name}_skewness'] = stats.skew(values)     if len(values) > 1 else np.nan  # Skewness, measure of asymmetry
+        statistics[f'{feature_name}_kurtosis'] = stats.kurtosis(values) if len(values) > 1 else np.nan  # Kurtosis, measure of tailedness
         statistics[f'{feature_name}_energy'] = np.sum(np.square(values)) if len(values) > 0 else np.nan
     return statistics
 
