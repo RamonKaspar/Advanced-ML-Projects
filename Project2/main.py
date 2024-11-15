@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from sklearn import svm, metrics, model_selection, preprocessing, impute, ensemble
+from sklearn import svm, metrics, model_selection, preprocessing, impute, ensemble, feature_selection, linear_model
 from biosppy.signals import ecg
 import neurokit2 as nk
 from tqdm import tqdm
@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from multiprocessing import cpu_count
 from joblib import Parallel, delayed
-
+from scipy import stats
 
 RANDOM_STATE = 69
 SAMPLING_RATE = 300
@@ -18,7 +18,12 @@ SAMPLING_RATE = 300
 SAMPLES = None
 # Whether to make predictions on the test set, if False, we use a validation set. If True, we use the 
 # full training set to train the model and make predictions on the test set.
-PREDICTION = True    
+PREDICTION = False    
+# Whether to recompute features or use the precomputed features
+RECOMPUTE_FEATURES = True
+
+assert (PREDICTION and RECOMPUTE_FEATURES) or not PREDICTION, "Whenever we predict, we must recompute features."
+
 
 def main():
     # Load data
@@ -43,19 +48,29 @@ def main():
             X_test = X_test.iloc[:SAMPLES]
             y_test = y_test[:SAMPLES]
     
-    # Preprocess data (remove NaNs and filter by minimum length)
-    X_train = preprocess_data(X_train)
-    X_test = preprocess_data(X_test)
-    
-    print_class_distribution(f"Training set", y_train, plot=False)
-    if not PREDICTION: print_class_distribution(f"Test set", y_test, plot=False)
-    
-    # Feature extraction with tracking of valid signals
-    print("\n== Extracting Features ==")
-    X_train_features = extract_features(X_train, parallel=True)
-    X_test_features = extract_features(X_test, parallel=True)
-    print(f"Shape of training features: {X_train_features.shape}")
-    print(f"Shape of test features: {X_test_features.shape}")
+    if RECOMPUTE_FEATURES:
+        # Preprocess data (remove NaNs and filter by minimum length)
+        X_train = preprocess_data(X_train)
+        X_test = preprocess_data(X_test)
+        
+        print_class_distribution(f"Training set", y_train, plot=False)
+        if not PREDICTION: print_class_distribution(f"Test set", y_test, plot=False)
+        
+        # Feature extraction with tracking of valid signals
+        print("\n== Extracting Features ==")
+        X_train_features = extract_features(X_train, parallel=True)
+        X_test_features = extract_features(X_test, parallel=True)
+        print(f"Shape of training features: {X_train_features.shape}")
+        print(f"Shape of test features: {X_test_features.shape}")
+        
+        print("Saving features to parquet files...")
+        pd.DataFrame(X_train_features).to_parquet('data/X_train_features.parquet')
+        pd.DataFrame(X_test_features).to_parquet('data/X_test_features.parquet')
+    else:
+        print("Loading precomputed features from parquet files...")
+        X_train_features = pd.read_parquet('data/X_train_features.parquet').values
+        X_test_features = pd.read_parquet('data/X_test_features.parquet').values
+    print("Number of features:", X_train_features.shape[1])
     
     # Standardize data
     print("\n== Standardizing Data ==")
@@ -232,6 +247,8 @@ def extract_features_single_signal(signal_data):
         
         features['R_amplitude'].append(filtered[r])
         
+        # Some characteristic points might be missing (not recognized by the algorithm), so we have to
+        # do this cumbersome check
         if p is not None:
             features['PR_interval'].append((r - p) / SAMPLING_RATE)
             features['P_amplitude'].append(filtered[int(p)])
@@ -253,20 +270,34 @@ def extract_features_single_signal(signal_data):
             
         if s is not None and t is not None:
             features['ST_segment'].append((t - s) / SAMPLING_RATE)
-        
+    
+    # Calculate statistical features
+    return idx, calculate_statistical_features(features)
+
+
+def calculate_statistical_features(features):
+    """Input is a dictionary of (feature_name, values) pairs. Output is a dictionary of statistical features,
+    calculated on the values array for each feature.
+    So if we calculate n statistical features for each input feature, the output will have n * len(features) features.
+    """
     statistics = {}
     for feature_name, values in features.items():
-        statistics[f'{feature_name}_mean'] = np.mean(values) if len(values) > 0 else np.nan
-        statistics[f'{feature_name}_std'] = np.std(values) if len(values) > 0 else np.nan
-        statistics[f'{feature_name}_min'] = np.min(values) if len(values) > 0 else np.nan
-        statistics[f'{feature_name}_max'] = np.max(values) if len(values) > 0 else np.nan
-        statistics[f'{feature_name}_median'] = np.median(values) if len(values) > 0 else np.nan
-        statistics[f'{feature_name}_q25'] = np.percentile(values, 25) if len(values) > 0 else np.nan
-        statistics[f'{feature_name}_q75'] = np.percentile(values, 75) if len(values) > 0 else np.nan
-        statistics[f'{feature_name}_ptp'] = np.ptp(values) if len(values) > 0 else np.nan # Peak-to-peak
-        statistics[f'{feature_name}_entropy'] = entropy(values) if len(values) > 0 else np.nan
-    
-    return idx, statistics
+        statistics[f'{feature_name}_mean'] = np.mean(values)            if len(values) > 0 else np.nan
+        statistics[f'{feature_name}_std'] = np.std(values)              if len(values) > 0 else np.nan
+        statistics[f'{feature_name}_min'] = np.min(values)              if len(values) > 0 else np.nan
+        statistics[f'{feature_name}_max'] = np.max(values)              if len(values) > 0 else np.nan
+        statistics[f'{feature_name}_median'] = np.median(values)        if len(values) > 0 else np.nan
+        statistics[f'{feature_name}_mad'] = stats.median_abs_deviation(values) if len(values) > 0 else np.nan
+        statistics[f'{feature_name}_q25'] = np.percentile(values, 25)   if len(values) > 0 else np.nan
+        statistics[f'{feature_name}_q75'] = np.percentile(values, 75)   if len(values) > 0 else np.nan
+        statistics[f'{feature_name}_iqr'] = stats.iqr(values)           if len(values) > 0 else np.nan
+        statistics[f'{feature_name}_var'] = np.var(values)              if len(values) > 0 else np.nan
+        statistics[f'{feature_name}_ptp'] = np.ptp(values)              if len(values) > 0 else np.nan # Peak-to-peak
+        statistics[f'{feature_name}_entropy'] = entropy(values)         if len(values) > 0 else np.nan
+        statistics[f'{feature_name}_skewness'] = stats.skew(values)     if len(values) > 0 else np.nan  # Skewness, measure of asymmetry
+        statistics[f'{feature_name}_kurtosis'] = stats.kurtosis(values) if len(values) > 0 else np.nan  # Kurtosis, measure of tailedness
+        statistics[f'{feature_name}_energy'] = np.sum(np.square(values)) if len(values) > 0 else np.nan
+    return statistics
 
 
 def entropy(signal):
