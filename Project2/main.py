@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from imblearn import over_sampling
 from sklearn import svm, metrics, model_selection, preprocessing, impute, ensemble, feature_selection, linear_model
 from biosppy.signals import ecg
 import neurokit2 as nk
@@ -31,6 +32,7 @@ def main():
     X_train = pd.read_parquet('data/train.parquet').drop(columns=['id', 'y'])
     X_test = pd.read_parquet('data/test.parquet').drop(columns='id')
     y_train = pd.read_parquet('data/train.parquet')['y'].values.ravel()
+    y_test = None
     
     # Print initial class distribution
     print_class_distribution("Full dataset", y_train, plot=False)
@@ -73,50 +75,19 @@ def main():
         X_test_features = pd.read_parquet('data/X_test_features.parquet').values
     print("Number of features:", X_train_features.shape[1])
     
-    # Standardize data
-    print("\n== Standardizing Data ==")
-    X_train_features, X_test_features = standardize_data(method='standard', X_train=X_train_features, X_test=X_test_features)
-    
-    # Might have NaN values in features, so we impute them
-    print("\n== Imputing NaN values ==")
-    num_nan_train = np.isnan(X_train_features).sum()
-    num_nan_test = np.isnan(X_test_features).sum()
-    num_nan_relative_train = num_nan_train / X_train_features.size
-    num_nan_relative_test = num_nan_test / X_test_features.size
-    print(f"Number of NaN values in training features: {num_nan_train} ({num_nan_relative_train:.2f}%)")
-    print(f"Number of NaN values in test features: {num_nan_test} ({num_nan_relative_test:.2f}%)")
-    X_train_features, X_test_features = fill_missing_values(X_train_features, strategy='mean', X_test=X_test_features)
-    assert np.isnan(X_train_features).sum() == 0
-    assert np.isnan(X_test_features).sum() == 0
-    
-    # TODO: Feature selection
+    # Randomly oversample
+    oversampler = over_sampling.RandomOverSampler(random_state=RANDOM_STATE)
+    X_train_features, y_train = oversampler.fit_resample(X_train_features, y_train)
+    print_class_distribution("After oversampling", y_train, plot=True)
     
     # Train Histogram Gradient Boosting Classifier
-    print("Train Histogram Gradient Boosting Classifier")
     hgb = ensemble.HistGradientBoostingClassifier(
         random_state=RANDOM_STATE,
         max_iter=1000,
         # verbose=1,
-        # class_weight='balanced'  # Because we have imbalanced classes, NOTE: We get a worse f1-micro score (but better f1-macro)
+        # class_weight='balanced',  # Because we have imbalanced classes, NOTE: We get a worse f1-micro score (but better f1-macro)
     )
-    
-    # Predict a score using cross-validation
-    score = model_selection.cross_val_score(hgb, X_train_features, y_train, cv=5, scoring='f1_micro')
-    print(f"Cross-validation score (f1 micro): {score.mean():.4f} (+/- {score.std() * 2:.4f})")
-    
-    # Train on the full training set
-    hgb.fit(X_train_features, y_train)  
-    
-    if not PREDICTION:
-        # Evaluate on the evaluation set
-        y_pred_hgb = hgb.predict(X_test_features)
-        evaluate_predictions(y_test, y_pred_hgb, "Histogram Gradient Boosting")
-    else:
-        # Make predictions on the test set
-        print("\n== Making Predictions ==")
-        X_test_final = X_test_features
-        y_pred_final = hgb.predict(X_test_final)
-        create_final_submission(y_pred_final, "submission.csv")
+    fit_model_and_evaluate(hgb, X_train_features, y_train, X_test_features, y_test, "Histogram Gradient Boosting")
     
 
 def print_class_distribution(name, y, plot=False):
@@ -152,31 +123,6 @@ def preprocess_data(X):
     X = X.apply(lambda row: row.dropna().to_numpy(dtype='float32'), axis=1)
     X = X.values
     return X
-
-
-def standardize_data(method: str, X_train, X_test=None):
-    """
-    Standardize the data using RobustScaler (which is less sensitive to outliers), StandardScaler
-    QuantileTransformer, or MinMaxScaler.
-    """
-    if method == 'standard':
-        scaler = preprocessing.StandardScaler()
-    elif method == 'robust':
-        scaler = preprocessing.RobustScaler()
-    elif method == 'quantile': 
-        scaler = preprocessing.QuantileTransformer(output_distribution='normal', n_quantiles=100)
-    elif method == 'minmax':
-        scaler = preprocessing.MinMaxScaler(feature_range=(-1, 1))
-    else:
-        raise ValueError(f"Unknown method: '{method}'.")
-    
-    print(f"Standardizing data using {method} scaler.")
-    scaler.fit(X_train)
-    X_scaled = scaler.transform(X_train)
-    if X_test is not None:
-        X_test_scaled = scaler.transform(X_test)
-        return X_scaled, X_test_scaled
-    return X_scaled, None
 
 
 def extract_features(X, parallel=True):
@@ -272,9 +218,35 @@ def extract_features_single_signal(signal_data):
             
         if s is not None and t is not None:
             features['ST_segment'].append((t - s) / SAMPLING_RATE)
+        
+    # Calculate statistical features (mean, std, min, max, etc.) for each feature
+    statistics = calculate_statistical_features(features)
+        
+    # FFT features
+    fft = np.fft.fft(filtered) if len(filtered) > 0 else np.array([])
+    fft_magnitude = np.abs(fft) if len(fft) > 0 else np.array([])
+    statistics[f'fft_mean'] = np.mean(fft_magnitude) if len(fft_magnitude) > 0 else np.nan
+    statistics[f'fft_std'] = np.std(fft_magnitude) if len(fft_magnitude) > 0 else np.nan
+    statistics[f'fft_max'] = np.max(fft_magnitude) if len(fft_magnitude) > 0 else np.nan
+    statistics[f'fft_min'] = np.min(fft_magnitude) if len(fft_magnitude) > 0 else np.nan
     
-    # Calculate statistical features
-    return idx, calculate_statistical_features(features)
+    # Cross-correlation of the filtered signal
+    cross_corr = np.correlate(filtered, filtered, mode='full') if len(filtered) > 0 else np.array([]) # Avoid empty array
+    statistics[f'cross_corr_mean'] = np.mean(cross_corr) if len(cross_corr) > 0 else np.nan
+    statistics[f'cross_corr_std'] = np.std(cross_corr) if len(cross_corr) > 0 else np.nan
+    statistics[f'cross_corr_max'] = np.max(cross_corr) if len(cross_corr) > 0 else np.nan
+    statistics[f'cross_corr_min'] = np.min(cross_corr) if len(cross_corr) > 0 else np.nan
+    
+    # Wavelet transform
+    import pywt
+    wavelet = 'db4'
+    coeffs = pywt.wavedec(filtered, wavelet, level=4) if len(filtered) > 0 else np.array([]) # Avoid empty array
+    for i, coeff in enumerate(coeffs):
+        statistics[f'wavelet_{i}_mean'] = np.mean(coeff) if len(coeff) > 0 else np.nan
+        statistics[f'wavelet_{i}_std'] = np.std(coeff) if len(coeff) > 0 else np.nan
+        statistics[f'wavelet_{i}_energy'] = np.sum(np.square(coeff)) if len(coeff) > 0 else np.nan
+    
+    return idx, statistics
 
 
 def calculate_statistical_features(features):
@@ -312,34 +284,6 @@ def entropy(signal):
     return -np.sum(signal * np.log2(signal))
 
 
-def fill_missing_values(X_train, strategy: str, X_test=None):
-    """
-    Fill missing values in the datasets according to the strategy provided.
-    Strategies available: 'mean', 'median', 'knn', 'most_frequent'.
-    Reference: https://scikit-learn.org/stable/modules/impute.html
-    """    
-    if strategy in ['mean', 'median', 'most_frequent']:
-        imputer = impute.SimpleImputer(strategy=strategy)
-    elif strategy == 'knn':
-        imputer = impute.KNNImputer()
-    elif strategy == 'iterative':
-        from sklearn.experimental import enable_iterative_imputer # Required to import 
-        imputer = impute.IterativeImputer(initial_strategy='median')
-    else:
-        raise ValueError(F"The strategy {strategy} is invalid.")
-    
-    print(f"Imputing missing values using {strategy} strategy.")
-    imputer.fit(X_train)
-    X_train_imputed = imputer.transform(X_train)
-    
-    # If X_test is provided, impute missing values in X_test
-    if X_test is not None:
-        X_test_imputed = imputer.transform(X_test)
-        return X_train_imputed, X_test_imputed  # use the same statistics as training set
-
-    return X_train_imputed, None
-
-
 def evaluate_predictions(y_true, y_pred, model_name):
     """Evaluate predictions with multiple metrics."""
     print_class_distribution(f"Predicted ({model_name})", y_pred, plot=True)
@@ -370,6 +314,28 @@ def evaluate_predictions(y_true, y_pred, model_name):
     plt.ylabel("True")
     plt.tight_layout()
     plt.savefig(f"plots/{model_name.lower().replace(' ', '_')}_confusion_matrix.pdf")
+    
+    
+def fit_model_and_evaluate(model, X_train_features, y_train, X_test_features, y_test, model_name):
+    """Fit a model and evaluate it on the validation set (if PREDICTION=False) or the test set and create 
+    the submission file (if PREDICTION=True)."""
+    print(f"\n== Training {model_name} ==")
+    # Predict a score using cross-validation
+    score = model_selection.cross_val_score(model, X_train_features, y_train, cv=5, scoring='f1_micro')
+    print(f"Cross-validation score (f1 micro): {score.mean():.4f} (+/- {score.std() * 2:.4f})")
+    
+    # Train on the full training set
+    model.fit(X_train_features, y_train)  
+    
+    if not PREDICTION:
+        # Evaluate on the evaluation set
+        y_pred_hgb = model.predict(X_test_features)
+        evaluate_predictions(y_test, y_pred_hgb, "Histogram Gradient Boosting")
+    else:
+        # Make predictions on the test set
+        X_test_final = X_test_features
+        y_pred_final = model.predict(X_test_final)
+        create_final_submission(y_pred_final, "submission.csv")
     
     
 def create_final_submission(y_pred, filename):
