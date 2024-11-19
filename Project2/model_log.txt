@@ -1,0 +1,42 @@
+----------------------------------------------------------------------------------------------------
+3rd try:
+Extract Features: ECG features (RR_interval, heart_rate, PR_interval, QRS_duration, QT_interval, ST_segment, P_amplitude, Q_amplitude, R_amplitude, S_amplitude, and T_amplitude).
+Compute Stats: mean, std, median, min, max, q25, q75, ptp, entropy
+==> 154 Features in total
+Impute Missing Values: Fill using median.
+Normalize: Standard scaler.
+Model: Histogram Gradient Boosting for prediction.
+----------------------------------------------------------------------------------------------------
+4th try 
+(Public score: 0.8225, Val: 0.8418, Cross-Val: 0.828)
+Extract Features: ECG features (RR_interval, heart_rate, PR_interval, QRS_duration, QT_interval, ST_segment, P_amplitude, Q_amplitude, R_amplitude, S_amplitude, and T_amplitude).
+Compute Stats: mean, std, median, min, max, q25, q75, ptp, entropy, mad, iqr, var, skewness, kurtosis, energy.
+==> 154 Features in total
+Impute Missing Values: Fill using median (327 filled in training set, 279 filled in test set).
+Normalize: Standard scaler.
+Model: Histogram Gradient Boosting.
+----------------------------------------------------------------------------------------------------
+5th try
+(Public score: 0.82134, Val: 0.8320, Cross-Val: 0.9638)
+Extract Features: 
+    - ECG features (RR_interval, heart_rate, PR_interval, QRS_duration, QT_interval, ST_segment, P_amplitude, Q_amplitude, R_amplitude, S_amplitude, and T_amplitude).
+    - FFT, Wavelet and Autocorrelation features
+Compute Stats: mean, std, median, min, max, q25, q75, ptp, entropy, mad, iqr, var, skewness, kurtosis, energy.
+==> 188 Features in total
+No imputation (HistGradientBoostingClassifier can hanlde NaNs)
+No standardization (HistGradientBoostingClassifier is invariant to scaling)
+Random Oversampling
+Model: HistGradientBoostingClassifier
+NOTE: Perhaps overfitting
+----------------------------------------------------------------------------------------------------
+6th try
+(Public score: 0.82540, Val:0.83, Cross-Val: 0.9642)
+Extract Features: 
+    - ECG features (RR_interval, heart_rate, PR_interval, QRS_duration, QT_interval, ST_segment, P_amplitude, Q_amplitude, R_amplitude, S_amplitude, and T_amplitude).
+    - FFT, Wavelet and Autocorrelation features
+Compute Stats: mean, std, median, min, max, q25, q75, ptp, entropy, mad, iqr, var, skewness, kurtosis, energy.
+==> 188 Features in total
+Random Oversampling
+Imputer (mean), standardization
+Model: StackingClassifier (HGB, LR, SVC) with final LR
+----------------------------------------------------------------------------------------------------

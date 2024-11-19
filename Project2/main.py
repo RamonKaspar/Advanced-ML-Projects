@@ -80,14 +80,47 @@ def main():
     X_train_features, y_train = oversampler.fit_resample(X_train_features, y_train)
     print_class_distribution("After oversampling", y_train, plot=True)
     
-    # Train Histogram Gradient Boosting Classifier
     hgb = ensemble.HistGradientBoostingClassifier(
-        random_state=RANDOM_STATE,
-        max_iter=1000,
-        # verbose=1,
-        # class_weight='balanced',  # Because we have imbalanced classes, NOTE: We get a worse f1-micro score (but better f1-macro)
+        random_state=RANDOM_STATE, 
+        max_iter=1000, 
+        l2_regularization=10,
+        max_depth=20,
     )
-    fit_model_and_evaluate(hgb, X_train_features, y_train, X_test_features, y_test, "Histogram Gradient Boosting")
+    # fit_model_and_evaluate(hgb, X_train_features, y_train, X_test_features, y_test, "Histogram Gradient Boosting")
+    
+    # Impute missing values and scale features
+    # NOTE: Imputationa and scaling needed for SVM and LR
+    imputer = impute.SimpleImputer(strategy='mean')
+    scaler = preprocessing.StandardScaler()
+    X_train_features = imputer.fit_transform(X_train_features)
+    X_train_features = scaler.fit_transform(X_train_features)
+    X_test_features = imputer.transform(X_test_features)
+    X_test_features = scaler.transform(X_test_features)
+    
+    stacking_clf = ensemble.StackingClassifier(
+        estimators=[
+            ('hgb', hgb),
+            ('lr', linear_model.LogisticRegression(
+                multi_class='ovr', 
+                class_weight='balanced', 
+                max_iter=1000
+            )),
+            ('svm', svm.SVC(
+                kernel='rbf', 
+                class_weight='balanced', 
+                probability=True
+            ))
+        ],
+        final_estimator=linear_model.LogisticRegression(
+            multi_class='ovr', 
+            class_weight='balanced', 
+            max_iter=1000
+        ),
+        cv=5,
+        n_jobs=-1
+    )
+    
+    fit_model_and_evaluate(stacking_clf, X_train_features, y_train, X_test_features, y_test, "Stacking Model (HGB, LR, SVM)")
     
 
 def print_class_distribution(name, y, plot=False):
