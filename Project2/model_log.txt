@@ -30,7 +30,7 @@ Model: HistGradientBoostingClassifier
 NOTE: Perhaps overfitting
 ----------------------------------------------------------------------------------------------------
 6th try
-(Public score: 0.82540, Val:0.83, Cross-Val: 0.9642)
+(Public score: 0.82540, Val: 0.83, Cross-Val: 0.9642)
 Extract Features: 
     - ECG features (RR_interval, heart_rate, PR_interval, QRS_duration, QT_interval, ST_segment, P_amplitude, Q_amplitude, R_amplitude, S_amplitude, and T_amplitude).
     - FFT, Wavelet and Autocorrelation features
@@ -39,4 +39,18 @@ Compute Stats: mean, std, median, min, max, q25, q75, ptp, entropy, mad, iqr, va
 Random Oversampling
 Imputer (mean), standardization
 Model: StackingClassifier (HGB, LR, SVC) with final LR
+----------------------------------------------------------------------------------------------------
+7th try
+(Public score: 0.81902, Val: 0.8418, Cross-Val: 0.9646)
+Extract Features: 
+    - ECG features (RR_interval, heart_rate, PR_interval, QRS_duration, QT_interval, ST_segment, P_amplitude, Q_amplitude, R_amplitude, S_amplitude, and T_amplitude).
+    - FFT, Wavelet and Autocorrelation features
+Compute Stats: mean, std, median, min, max, q25, q75, ptp, entropy, mad, iqr, var, skewness, kurtosis, energy.
+==> 188 Features in total
+Random Oversampling
+Imputer (mean), standardization
+Model: StackingClassifier (HGB, SVC) with final LR
+NOTES:
+    - Why is CV score so much higher compared to validation score?
+    - Validation Evaluation (10% split): Very good performance on individual classes, i.e., F1-scores of (Class 0: 0.8934,  Class 1: 0.8095, Class 2: 0.7353, Class 3: 0.8000).
 ----------------------------------------------------------------------------------------------------

@@ -79,15 +79,7 @@ def main():
     oversampler = over_sampling.RandomOverSampler(random_state=RANDOM_STATE)
     X_train_features, y_train = oversampler.fit_resample(X_train_features, y_train)
     print_class_distribution("After oversampling", y_train, plot=True)
-    
-    hgb = ensemble.HistGradientBoostingClassifier(
-        random_state=RANDOM_STATE, 
-        max_iter=1000, 
-        l2_regularization=10,
-        max_depth=20,
-    )
-    # fit_model_and_evaluate(hgb, X_train_features, y_train, X_test_features, y_test, "Histogram Gradient Boosting")
-    
+        
     # Impute missing values and scale features
     # NOTE: Imputationa and scaling needed for SVM and LR
     imputer = impute.SimpleImputer(strategy='mean')
@@ -99,16 +91,17 @@ def main():
     
     stacking_clf = ensemble.StackingClassifier(
         estimators=[
-            ('hgb', hgb),
-            ('lr', linear_model.LogisticRegression(
-                multi_class='ovr', 
-                class_weight='balanced', 
-                max_iter=1000
+            ('hgb', ensemble.HistGradientBoostingClassifier(
+                random_state=RANDOM_STATE, 
+                max_iter=1000, 
+                # l2_regularization=10,
+                # max_depth=20,
             )),
             ('svm', svm.SVC(
                 kernel='rbf', 
                 class_weight='balanced', 
-                probability=True
+                probability=True,
+                max_iter=1000
             ))
         ],
         final_estimator=linear_model.LogisticRegression(
