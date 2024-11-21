@@ -51,6 +51,20 @@ Random Oversampling
 Imputer (mean), standardization
 Model: StackingClassifier (HGB, SVC) with final LR
 NOTES:
-    - Why is CV score so much higher compared to validation score?
+    - Why is CV score so much higher compared to validation score? ==> Answer: Oversampling caused data leakage! Now we oversample each fold individually.
     - Validation Evaluation (10% split): Very good performance on individual classes, i.e., F1-scores of (Class 0: 0.8934,  Class 1: 0.8095, Class 2: 0.7353, Class 3: 0.8000).
+----------------------------------------------------------------------------------------------------
+8th try
+(Public score: 0.79756, Val: 0.8262, Cross-Val: 0.8151)
+Extract Features: 
+    - ECG features (RR_interval, heart_rate, PR_interval, QRS_duration, QT_interval, ST_segment, P_amplitude, Q_amplitude, R_amplitude, S_amplitude, T_amplitude, T_wave_duration, P_wave_duration).
+    - FFT, Wavelet and Autocorrelation features
+Compute Stats: mean, std, median, min, max, q25, q75, ptp, entropy, mad, iqr, var, skewness, kurtosis, energy.
+Improvement: We use the "nan" functions, so NaNs will be ignored in compuation of mean, std, etc.
+==> 218 Features in total
+Imputer (mean), standardization, Feature Selection (100 features, using mututal information) 
+Move Oversampler into pipeline, so we oversample each fold seperately (should reduce the high CV-score we observed before)
+Use SMOT oversampler (should perform better, as we create synthetic)
+Use StratifiedKFold instead of "normal" KFold to maintain Class distribution
+Model: HistGradientBoostingClassifier
 ----------------------------------------------------------------------------------------------------

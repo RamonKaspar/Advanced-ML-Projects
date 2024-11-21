@@ -1,7 +1,8 @@
 import numpy as np
 import pandas as pd
 from imblearn import over_sampling
-from sklearn import svm, metrics, model_selection, preprocessing, impute, ensemble, feature_selection, linear_model
+from imblearn.pipeline import Pipeline as ImbPipeline
+from sklearn import svm, metrics, model_selection, preprocessing, impute, ensemble, feature_selection, linear_model, pipeline
 from biosppy.signals import ecg
 import neurokit2 as nk
 from tqdm import tqdm
@@ -75,45 +76,19 @@ def main():
         X_test_features = pd.read_parquet('data/X_test_features.parquet').values
     print("Number of features:", X_train_features.shape[1])
     
-    # Randomly oversample
-    oversampler = over_sampling.RandomOverSampler(random_state=RANDOM_STATE)
-    X_train_features, y_train = oversampler.fit_resample(X_train_features, y_train)
-    print_class_distribution("After oversampling", y_train, plot=True)
         
-    # Impute missing values and scale features
-    # NOTE: Imputationa and scaling needed for SVM and LR
-    imputer = impute.SimpleImputer(strategy='mean')
-    scaler = preprocessing.StandardScaler()
-    X_train_features = imputer.fit_transform(X_train_features)
-    X_train_features = scaler.fit_transform(X_train_features)
-    X_test_features = imputer.transform(X_test_features)
-    X_test_features = scaler.transform(X_test_features)
+    # NOTE: We perform oversampling in the pipeline, so in cross-validation we oversample each fold separately.
+    # This was the reason for the high CV-score before, as we were oversampling the whole training set before splitting.
+    model_pipeline = ImbPipeline([
+        ('imputer', impute.SimpleImputer(strategy='mean')),
+        ('scaler', preprocessing.StandardScaler()),
+        ('feature_selection', feature_selection.SelectKBest(feature_selection.mutual_info_classif, k=100)),
+        # ('oversampler', over_sampling.RandomOverSampler(random_state=RANDOM_STATE)),
+        ('oversampler', over_sampling.SMOTE(random_state=RANDOM_STATE)),
+        ('classifier', ensemble.HistGradientBoostingClassifier(random_state=RANDOM_STATE, max_iter=1000))
+    ])
     
-    stacking_clf = ensemble.StackingClassifier(
-        estimators=[
-            ('hgb', ensemble.HistGradientBoostingClassifier(
-                random_state=RANDOM_STATE, 
-                max_iter=1000, 
-                # l2_regularization=10,
-                # max_depth=20,
-            )),
-            ('svm', svm.SVC(
-                kernel='rbf', 
-                class_weight='balanced', 
-                probability=True,
-                max_iter=1000
-            ))
-        ],
-        final_estimator=linear_model.LogisticRegression(
-            multi_class='ovr', 
-            class_weight='balanced', 
-            max_iter=1000
-        ),
-        cv=5,
-        n_jobs=-1
-    )
-    
-    fit_model_and_evaluate(stacking_clf, X_train_features, y_train, X_test_features, y_test, "Stacking Model (HGB, LR, SVM)")
+    fit_model_and_evaluate(model_pipeline, X_train_features, y_train, X_test_features, y_test, "HistGradientBoostingClassifier with oversampling")
     
 
 def print_class_distribution(name, y, plot=False):
@@ -188,7 +163,7 @@ def extract_features_single_signal(signal_data):
     features = {
         'PR_interval': [], 'QRS_duration': [], 'QT_interval': [], 'ST_segment': [], 
         'P_amplitude': [], 'Q_amplitude': [], 'R_amplitude': [], 'S_amplitude': [], 'T_amplitude': [],
-        'RR_interval': [], 'Heart_rate': []
+        'RR_interval': [], 'Heart_rate': [], 'P_wave_duration': [], 'T_wave_duration': []
     }
         
     # R-peaks
@@ -226,6 +201,7 @@ def extract_features_single_signal(signal_data):
         if p is not None:
             features['PR_interval'].append((r - p) / SAMPLING_RATE)
             features['P_amplitude'].append(filtered[int(p)])
+            features['P_wave_duration'].append((q - p) / SAMPLING_RATE if q is not None else np.nan)
             
         if q is not None:
             features['Q_amplitude'].append(filtered[int(q)])
@@ -238,6 +214,7 @@ def extract_features_single_signal(signal_data):
 
         if t is not None:
             features['T_amplitude'].append(filtered[int(t)])
+            features['T_wave_duration'].append((t - s) / SAMPLING_RATE if s is not None else np.nan)
             
         if q is not None and t is not None:
             features['QT_interval'].append((t - r) / SAMPLING_RATE)
@@ -282,21 +259,21 @@ def calculate_statistical_features(features):
     """
     statistics = {}
     for feature_name, values in features.items():
-        statistics[f'{feature_name}_mean'] = np.mean(values)            if len(values) > 0 else np.nan
-        statistics[f'{feature_name}_std'] = np.std(values)              if len(values) > 0 else np.nan
-        statistics[f'{feature_name}_min'] = np.min(values)              if len(values) > 0 else np.nan
-        statistics[f'{feature_name}_max'] = np.max(values)              if len(values) > 0 else np.nan
-        statistics[f'{feature_name}_median'] = np.median(values)        if len(values) > 0 else np.nan
-        statistics[f'{feature_name}_mad'] = stats.median_abs_deviation(values) if len(values) > 0 else np.nan
-        statistics[f'{feature_name}_q25'] = np.percentile(values, 25)   if len(values) > 0 else np.nan
-        statistics[f'{feature_name}_q75'] = np.percentile(values, 75)   if len(values) > 0 else np.nan
-        statistics[f'{feature_name}_iqr'] = stats.iqr(values)           if len(values) > 0 else np.nan
-        statistics[f'{feature_name}_var'] = np.var(values)              if len(values) > 0 else np.nan
-        statistics[f'{feature_name}_ptp'] = np.ptp(values)              if len(values) > 0 else np.nan # Peak-to-peak
+        statistics[f'{feature_name}_mean'] = np.nanmean(values)            if len(values) > 0 else np.nan
+        statistics[f'{feature_name}_std'] = np.nanstd(values)              if len(values) > 0 else np.nan
+        statistics[f'{feature_name}_min'] = np.nanmin(values)              if len(values) > 0 else np.nan
+        statistics[f'{feature_name}_max'] = np.nanmax(values)              if len(values) > 0 else np.nan
+        statistics[f'{feature_name}_median'] = np.nanmedian(values)        if len(values) > 0 else np.nan
+        statistics[f'{feature_name}_mad'] = stats.median_abs_deviation(values, nan_policy="omit") if len(values) > 0 else np.nan
+        statistics[f'{feature_name}_q25'] = np.nanpercentile(values, 25)   if len(values) > 0 else np.nan
+        statistics[f'{feature_name}_q75'] = np.nanpercentile(values, 75)   if len(values) > 0 else np.nan
+        statistics[f'{feature_name}_iqr'] = stats.iqr(values, nan_policy="omit") if len(values) > 0 else np.nan
+        statistics[f'{feature_name}_var'] = np.nanvar(values)              if len(values) > 0 else np.nan
+        statistics[f'{feature_name}_ptp'] = (np.nanmax(values) - np.nanmin(values)) if len(values) > 0 else np.nan # Peak-to-peak
         statistics[f'{feature_name}_entropy'] = entropy(values)         if len(values) > 0 else np.nan
-        statistics[f'{feature_name}_skewness'] = stats.skew(values)     if len(values) > 1 else np.nan  # Skewness, measure of asymmetry
-        statistics[f'{feature_name}_kurtosis'] = stats.kurtosis(values) if len(values) > 1 else np.nan  # Kurtosis, measure of tailedness
-        statistics[f'{feature_name}_energy'] = np.sum(np.square(values)) if len(values) > 0 else np.nan
+        statistics[f'{feature_name}_skewness'] = stats.skew(values, nan_policy="omit") if len(values) > 1 else np.nan  # Skewness, measure of asymmetry
+        statistics[f'{feature_name}_kurtosis'] = stats.kurtosis(values, nan_policy="omit") if len(values) > 1 else np.nan  # Kurtosis, measure of tailedness
+        statistics[f'{feature_name}_energy'] = np.nansum(np.square(values)) if len(values) > 0 else np.nan
     return statistics
 
 
@@ -342,25 +319,27 @@ def evaluate_predictions(y_true, y_pred, model_name):
     plt.savefig(f"plots/{model_name.lower().replace(' ', '_')}_confusion_matrix.pdf")
     
     
-def fit_model_and_evaluate(model, X_train_features, y_train, X_test_features, y_test, model_name):
+def fit_model_and_evaluate(model_pipeline, X_train_features, y_train, X_test_features, y_test, model_name):
     """Fit a model and evaluate it on the validation set (if PREDICTION=False) or the test set and create 
     the submission file (if PREDICTION=True)."""
     print(f"\n== Training {model_name} ==")
-    # Predict a score using cross-validation
-    score = model_selection.cross_val_score(model, X_train_features, y_train, cv=5, scoring='f1_micro')
+    # Cross-validation with the pipeline (to oversample each fold separately)
+    # score = model_selection.cross_val_score(model_pipeline, X_train_features, y_train, cv=5, scoring='f1_micro')
+    # NOTE: We use StratifiedKFold to maintain class distribution in each fold!
+    cv = model_selection.StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)
+    score = model_selection.cross_val_score(model_pipeline, X_train_features, y_train, cv=cv , scoring='f1_micro')
     print(f"Cross-validation score (f1 micro): {score.mean():.4f} (+/- {score.std() * 2:.4f})")
-    
+
     # Train on the full training set
-    model.fit(X_train_features, y_train)  
-    
+    model_pipeline.fit(X_train_features, y_train)
+
     if not PREDICTION:
         # Evaluate on the evaluation set
-        y_pred_hgb = model.predict(X_test_features)
-        evaluate_predictions(y_test, y_pred_hgb, "Histogram Gradient Boosting")
+        y_pred = model_pipeline.predict(X_test_features)
+        evaluate_predictions(y_test, y_pred, model_name)
     else:
         # Make predictions on the test set
-        X_test_final = X_test_features
-        y_pred_final = model.predict(X_test_final)
+        y_pred_final = model_pipeline.predict(X_test_features)
         create_final_submission(y_pred_final, "submission.csv")
     
     
