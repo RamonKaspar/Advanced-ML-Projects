@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from imblearn import over_sampling
 from imblearn.pipeline import Pipeline as ImbPipeline
-from sklearn import svm, metrics, model_selection, preprocessing, impute, ensemble, feature_selection, linear_model, pipeline
+from sklearn import svm, metrics, model_selection, preprocessing, impute, ensemble, feature_selection, linear_model, pipeline, neighbors
 from biosppy.signals import ecg
 import neurokit2 as nk
 from tqdm import tqdm
@@ -12,6 +12,10 @@ import seaborn as sns
 from multiprocessing import cpu_count
 from joblib import Parallel, delayed
 from scipy import stats
+import xgboost as xgb
+
+import warnings
+warnings.filterwarnings('ignore')
 
 RANDOM_STATE = 69
 SAMPLING_RATE = 300
@@ -20,7 +24,7 @@ SAMPLING_RATE = 300
 SAMPLES = None
 # Whether to make predictions on the test set, if False, we use a validation set. If True, we use the 
 # full training set to train the model and make predictions on the test set.
-PREDICTION = True    
+PREDICTION = False    
 # Whether to recompute features or use the precomputed features
 RECOMPUTE_FEATURES = True
 
@@ -79,16 +83,28 @@ def main():
         
     # NOTE: We perform oversampling in the pipeline, so in cross-validation we oversample each fold separately.
     # This was the reason for the high CV-score before, as we were oversampling the whole training set before splitting.
-    model_pipeline = ImbPipeline([
-        ('imputer', impute.SimpleImputer(strategy='mean')),
-        ('scaler', preprocessing.StandardScaler()),
-        ('feature_selection', feature_selection.SelectKBest(feature_selection.mutual_info_classif, k=100)),
-        # ('oversampler', over_sampling.RandomOverSampler(random_state=RANDOM_STATE)),
-        ('oversampler', over_sampling.SMOTE(random_state=RANDOM_STATE)),
-        ('classifier', ensemble.HistGradientBoostingClassifier(random_state=RANDOM_STATE, max_iter=1000))
+
+    # Parameters found by grid search
+    xgb_model = xgb.XGBClassifier(
+        objective='multi:softmax',
+        num_class=4,
+        n_estimators=1000,
+        learning_rate=0.1,
+        max_depth=5,
+        subsample=0.9,
+        colsample_bytree=0.9,
+        random_state=RANDOM_STATE,
+        tree_method='hist'
+    )
+    
+    model_pipeline_xgb = ImbPipeline([
+        ('imputer', impute.KNNImputer(n_neighbors=5, weights='distance')),
+        ('scaler', preprocessing.MinMaxScaler(feature_range=(-1, 1))),
+        ('oversampler', over_sampling.RandomOverSampler(random_state=RANDOM_STATE)),
+        ('classifier', xgb_model)
     ])
     
-    fit_model_and_evaluate(model_pipeline, X_train_features, y_train, X_test_features, y_test, "HistGradientBoostingClassifier with oversampling")
+    fit_model_and_evaluate(model_pipeline_xgb, X_train_features, y_train, X_test_features, y_test)
     
 
 def print_class_distribution(name, y, plot=False):
@@ -287,9 +303,9 @@ def entropy(signal):
     return -np.sum(signal * np.log2(signal))
 
 
-def evaluate_predictions(y_true, y_pred, model_name):
+def evaluate_predictions(y_true, y_pred):
     """Evaluate predictions with multiple metrics."""
-    print_class_distribution(f"Predicted ({model_name})", y_pred, plot=True)
+    print_class_distribution(f"Predicted", y_pred, plot=True)
     
     print("\nMetrics per class:")
     for class_label in sorted(set(y_true)):
@@ -312,17 +328,17 @@ def evaluate_predictions(y_true, y_pred, model_name):
     
     plt.figure(figsize=(8, 6))
     sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues')
-    plt.title(f"{model_name} Confusion Matrix")
+    plt.title(f"Confusion Matrix")
     plt.xlabel("Predicted")
     plt.ylabel("True")
     plt.tight_layout()
-    plt.savefig(f"plots/{model_name.lower().replace(' ', '_')}_confusion_matrix.pdf")
+    plt.savefig(f"plots/confusion_matrix.pdf")
     
     
-def fit_model_and_evaluate(model_pipeline, X_train_features, y_train, X_test_features, y_test, model_name):
+def fit_model_and_evaluate(model_pipeline, X_train_features, y_train, X_test_features, y_test):
     """Fit a model and evaluate it on the validation set (if PREDICTION=False) or the test set and create 
     the submission file (if PREDICTION=True)."""
-    print(f"\n== Training {model_name} ==")
+    print(f"\n== Training Model ==")
     # Cross-validation with the pipeline (to oversample each fold separately)
     # score = model_selection.cross_val_score(model_pipeline, X_train_features, y_train, cv=5, scoring='f1_micro')
     # NOTE: We use StratifiedKFold to maintain class distribution in each fold!
@@ -336,7 +352,7 @@ def fit_model_and_evaluate(model_pipeline, X_train_features, y_train, X_test_fea
     if not PREDICTION:
         # Evaluate on the evaluation set
         y_pred = model_pipeline.predict(X_test_features)
-        evaluate_predictions(y_test, y_pred, model_name)
+        evaluate_predictions(y_test, y_pred)
     else:
         # Make predictions on the test set
         y_pred_final = model_pipeline.predict(X_test_features)

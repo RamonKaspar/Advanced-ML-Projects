@@ -68,3 +68,13 @@ Use SMOT oversampler (should perform better, as we create synthetic)
 Use StratifiedKFold instead of "normal" KFold to maintain Class distribution
 Model: HistGradientBoostingClassifier
 ----------------------------------------------------------------------------------------------------
+9th try
+(Public score: , Val: , Cross-Val: 0.8204)
+Extract Features: 
+    - ECG features (RR_interval, heart_rate, PR_interval, QRS_duration, QT_interval, ST_segment, P_amplitude, Q_amplitude, R_amplitude, S_amplitude, T_amplitude, T_wave_duration, P_wave_duration).
+    - FFT, Wavelet and Autocorrelation features
+Compute Stats: mean, std, median, min, max, q25, q75, ptp, entropy, mad, iqr, var, skewness, kurtosis, energy.
+==> 218 Features in total
+Imputer (knn), MinMaxScaler
+RandomOverSampler (performs better than SMOT)
+Model: XGBClassifier (n_estimators=1000)
