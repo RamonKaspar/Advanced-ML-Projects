@@ -69,12 +69,33 @@ Use StratifiedKFold instead of "normal" KFold to maintain Class distribution
 Model: HistGradientBoostingClassifier
 ----------------------------------------------------------------------------------------------------
 9th try
-(Public score: , Val: , Cross-Val: 0.8204)
+(Public score: 0.82192, Val: , Cross-Val: 0.8204)
 Extract Features: 
     - ECG features (RR_interval, heart_rate, PR_interval, QRS_duration, QT_interval, ST_segment, P_amplitude, Q_amplitude, R_amplitude, S_amplitude, T_amplitude, T_wave_duration, P_wave_duration).
     - FFT, Wavelet and Autocorrelation features
 Compute Stats: mean, std, median, min, max, q25, q75, ptp, entropy, mad, iqr, var, skewness, kurtosis, energy.
 ==> 218 Features in total
-Imputer (knn), MinMaxScaler
+Imputer (knn), MinMaxScaler (feature range [-1,1])
 RandomOverSampler (performs better than SMOT)
 Model: XGBClassifier (n_estimators=1000)
+----------------------------------------------------------------------------------------------------
+10th try
+NOTE: Similar to 5th try, but with other classifiers
+(Public score: 0.80684, Val: 0.8164, Cross-Val: 0.7953)
+Extract Features: 
+    - ECG features (RR_interval, heart_rate, PR_interval, QRS_duration, QT_interval, ST_segment, P_amplitude, Q_amplitude, R_amplitude, S_amplitude, T_amplitude, T_wave_duration, P_wave_duration).
+    - FFT, Wavelet and Autocorrelation features
+Compute Stats: mean, std, median, min, max, q25, q75, ptp, entropy, mad, iqr, var, skewness, kurtosis, energy.
+==> 218 Features in total
+Imputer (mean), RobustScaler
+RandomOverSampler
+Model: StackingClassifier (HGB, RF, SVC) with final LR
+
+VALIDATION SET (10% split):
+Cross-Validation Score (5 splits): 0.7953
+Class 0: 0.8852
+Class 1: 0.7027
+Class 2: 0.6947
+Class 3: 0.6154
+Overall: 0.8164
+----------------------------------------------------------------------------------------------------

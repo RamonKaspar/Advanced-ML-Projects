@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from imblearn import over_sampling
 from imblearn.pipeline import Pipeline as ImbPipeline
-from sklearn import svm, metrics, model_selection, preprocessing, impute, ensemble, feature_selection, linear_model, pipeline, neighbors
+from sklearn import svm, metrics, model_selection, preprocessing, impute, ensemble, feature_selection, linear_model, pipeline, decomposition
 from biosppy.signals import ecg
 import neurokit2 as nk
 from tqdm import tqdm
@@ -16,6 +16,7 @@ import xgboost as xgb
 
 import warnings
 warnings.filterwarnings('ignore')
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 RANDOM_STATE = 69
 SAMPLING_RATE = 300
@@ -24,7 +25,7 @@ SAMPLING_RATE = 300
 SAMPLES = None
 # Whether to make predictions on the test set, if False, we use a validation set. If True, we use the 
 # full training set to train the model and make predictions on the test set.
-PREDICTION = False    
+PREDICTION = True    
 # Whether to recompute features or use the precomputed features
 RECOMPUTE_FEATURES = True
 
@@ -84,27 +85,43 @@ def main():
     # NOTE: We perform oversampling in the pipeline, so in cross-validation we oversample each fold separately.
     # This was the reason for the high CV-score before, as we were oversampling the whole training set before splitting.
 
-    # Parameters found by grid search
-    xgb_model = xgb.XGBClassifier(
-        objective='multi:softmax',
-        num_class=4,
-        n_estimators=1000,
-        learning_rate=0.1,
-        max_depth=5,
-        subsample=0.9,
-        colsample_bytree=0.9,
-        random_state=RANDOM_STATE,
-        tree_method='hist'
+    # StackingClassifier (HGB, LR, SVC) with final LR
+    stacking_clf = ensemble.StackingClassifier(
+        estimators=[
+            ('hgb', ensemble.HistGradientBoostingClassifier(
+                random_state=RANDOM_STATE, 
+                max_iter=1000, 
+                l2_regularization=10,
+                max_depth=20,
+            )),
+            ('svm', svm.SVC(
+                kernel='rbf', 
+                class_weight='balanced', 
+                probability=True
+            )),
+            ('rf', ensemble.RandomForestClassifier(
+                n_estimators=100, 
+                class_weight='balanced_subsample', 
+                random_state=RANDOM_STATE
+            ))
+        ],
+        final_estimator=linear_model.LogisticRegression(
+            class_weight='balanced', 
+            max_iter=1000
+        ),
+        cv=5,
+        n_jobs=-1,
+        # verbose=1
     )
     
-    model_pipeline_xgb = ImbPipeline([
-        ('imputer', impute.KNNImputer(n_neighbors=5, weights='distance')),
-        ('scaler', preprocessing.MinMaxScaler(feature_range=(-1, 1))),
+    model_pipeline = ImbPipeline([
+        ('imputer', impute.SimpleImputer(strategy='mean')),
+        ('scaler', preprocessing.StandardScaler()),
         ('oversampler', over_sampling.RandomOverSampler(random_state=RANDOM_STATE)),
-        ('classifier', xgb_model)
+        ('classifier', stacking_clf)
     ])
     
-    fit_model_and_evaluate(model_pipeline_xgb, X_train_features, y_train, X_test_features, y_test)
+    fit_model_and_evaluate(model_pipeline, X_train_features, y_train, X_test_features, y_test)
     
 
 def print_class_distribution(name, y, plot=False):
@@ -137,7 +154,7 @@ def print_class_distribution(name, y, plot=False):
 def preprocess_data(X):
     """Preprocess ECG signals."""
     # Convert to numpy arrays and handle NaNs
-    X = X.apply(lambda row: row.dropna().to_numpy(dtype='float32'), axis=1)
+    X = X.apply(lambda row: row.dropna().to_numpy(dtype='float64'), axis=1)
     X = X.values
     return X
 
@@ -343,7 +360,7 @@ def fit_model_and_evaluate(model_pipeline, X_train_features, y_train, X_test_fea
     # score = model_selection.cross_val_score(model_pipeline, X_train_features, y_train, cv=5, scoring='f1_micro')
     # NOTE: We use StratifiedKFold to maintain class distribution in each fold!
     cv = model_selection.StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)
-    score = model_selection.cross_val_score(model_pipeline, X_train_features, y_train, cv=cv , scoring='f1_micro')
+    score = model_selection.cross_val_score(model_pipeline, X_train_features, y_train, cv=cv , scoring='f1_micro', n_jobs=-1, verbose=1)
     print(f"Cross-validation score (f1 micro): {score.mean():.4f} (+/- {score.std() * 2:.4f})")
 
     # Train on the full training set
