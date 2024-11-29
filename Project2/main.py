@@ -84,31 +84,42 @@ def main():
         
     # NOTE: We perform oversampling in the pipeline, so in cross-validation we oversample each fold separately.
     # This was the reason for the high CV-score before, as we were oversampling the whole training set before splitting.
-
-    # StackingClassifier (HGB, LR, SVC) with final LR
+    
+    xgb_model = xgb.XGBClassifier(
+        objective='multi:softmax',
+        num_class=4,
+        n_estimators=1000,
+        learning_rate=0.1,
+        max_depth=5,
+        subsample=0.8,  # Randomly sample 80% of the data for each tree
+        colsample_bytree=0.8,  # Randomly sample 80% of features for each tree
+        random_state=RANDOM_STATE,
+        tree_method='hist',
+    )
+    
+    hgb_model = ensemble.HistGradientBoostingClassifier(
+        random_state=RANDOM_STATE, 
+        max_iter=1000, 
+        l2_regularization=10,
+        max_depth=20,
+    )
+    
+    meta_model = linear_model.LogisticRegression(
+        random_state=RANDOM_STATE, 
+        class_weight='balanced'
+    )
+    
     stacking_clf = ensemble.StackingClassifier(
         estimators=[
-            ('hgb', ensemble.HistGradientBoostingClassifier(
-                random_state=RANDOM_STATE, 
-                max_iter=1000, 
-                l2_regularization=10,
-                max_depth=20,
-            )),
-            ('lr', linear_model.LogisticRegression(
-                multi_class='ovr', 
+            ('hgb', hgb_model),
+            ('xgb', xgb_model),
+            ('svc', svm.SVC(
+                kernel='rbf', 
                 class_weight='balanced', 
-                max_iter=1000
-            )),
-            ('svm', svm.SVC(
-                kernel='linear', 
-                class_weight='balanced', 
-                probability=True
+                probability=True    
             ))
         ],
-        final_estimator=linear_model.LogisticRegression(
-            class_weight='balanced', 
-            max_iter=1000
-        ),
+        final_estimator=meta_model,
         cv=5,
         n_jobs=-1
     )
@@ -358,9 +369,9 @@ def fit_model_and_evaluate(model_pipeline, X_train_features, y_train, X_test_fea
     # Cross-validation with the pipeline (to oversample each fold separately)
     # score = model_selection.cross_val_score(model_pipeline, X_train_features, y_train, cv=5, scoring='f1_micro')
     # NOTE: We use StratifiedKFold to maintain class distribution in each fold!
-    cv = model_selection.StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)
-    score = model_selection.cross_val_score(model_pipeline, X_train_features, y_train, cv=cv , scoring='f1_micro', n_jobs=-1, verbose=1)
-    print(f"Cross-validation score (f1 micro): {score.mean():.4f} (+/- {score.std() * 2:.4f})")
+    # cv = model_selection.StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)
+    # score = model_selection.cross_val_score(model_pipeline, X_train_features, y_train, cv=cv , scoring='f1_micro', n_jobs=-1, verbose=1)
+    # print(f"Cross-validation score (f1 micro): {score.mean():.4f} (+/- {score.std() * 2:.4f})")
 
     # Train on the full training set
     model_pipeline.fit(X_train_features, y_train)
