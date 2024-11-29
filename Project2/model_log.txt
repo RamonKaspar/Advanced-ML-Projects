@@ -80,7 +80,7 @@ RandomOverSampler (performs better than SMOT)
 Model: XGBClassifier (n_estimators=1000)
 ----------------------------------------------------------------------------------------------------
 10th try
-NOTE: Similar to 5th try, but with other classifiers
+NOTE: Similar to 5th try, but with a linear SVC kernel
 (Public score: 0.80684, Val: 0.8164, Cross-Val: 0.7953)
 Extract Features: 
     - ECG features (RR_interval, heart_rate, PR_interval, QRS_duration, QT_interval, ST_segment, P_amplitude, Q_amplitude, R_amplitude, S_amplitude, T_amplitude, T_wave_duration, P_wave_duration).
@@ -92,10 +92,32 @@ RandomOverSampler
 Model: StackingClassifier (HGB, RF, SVC) with final LR
 
 VALIDATION SET (10% split):
-Cross-Validation Score (5 splits): 0.7953
-Class 0: 0.8852
-Class 1: 0.7027
-Class 2: 0.6947
-Class 3: 0.6154
-Overall: 0.8164
+Cross-Validation Score (5 splits): 0.8206
+Class 0: 0.8857
+Class 1: 0.8046
+Class 2: 0.7206
+Class 3: 0.6857
+Overall: 0.8281
+----------------------------------------------------------------------------------------------------
+11th try        (similar to 6th try)
+NOTE: We also increased accuracy to float64 (instead of float32)
+(Public score: 0.81438, Val: 0.8193, Cross-Val: 0.8179)
+Extract Features: 
+    - ECG features (RR_interval, heart_rate, PR_interval, QRS_duration, QT_interval, ST_segment, P_amplitude, Q_amplitude, R_amplitude, S_amplitude, T_amplitude, T_wave_duration, P_wave_duration).
+    - FFT, Wavelet and Autocorrelation features
+Compute Stats: mean, std, median, min, max, q25, q75, ptp, entropy, mad, iqr, var, skewness, kurtosis, energy.
+==> 218 Features in total
+Imputer (mean), StandardScaler
+RandomOverSampler
+Model: StackingClassifier (HGB, LR, SVC) with final LR
+
+VALIDATION SET (10% split):
+Cross-Validation Score (5 splits): 0.8193
+Class 0: 0.8924
+Class 1: 0.8182
+Class 2: 0.7206
+Class 3: 0.7500
+Overall: 0.8316
+
+NOTE: Actually worse than 6th try (the increased number of features actually decraded the performance)!
 ----------------------------------------------------------------------------------------------------

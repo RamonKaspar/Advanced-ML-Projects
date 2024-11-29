@@ -94,15 +94,15 @@ def main():
                 l2_regularization=10,
                 max_depth=20,
             )),
+            ('lr', linear_model.LogisticRegression(
+                multi_class='ovr', 
+                class_weight='balanced', 
+                max_iter=1000
+            )),
             ('svm', svm.SVC(
-                kernel='rbf', 
+                kernel='linear', 
                 class_weight='balanced', 
                 probability=True
-            )),
-            ('rf', ensemble.RandomForestClassifier(
-                n_estimators=100, 
-                class_weight='balanced_subsample', 
-                random_state=RANDOM_STATE
             ))
         ],
         final_estimator=linear_model.LogisticRegression(
@@ -110,8 +110,7 @@ def main():
             max_iter=1000
         ),
         cv=5,
-        n_jobs=-1,
-        # verbose=1
+        n_jobs=-1
     )
     
     model_pipeline = ImbPipeline([
