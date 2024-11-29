@@ -101,6 +101,7 @@ Overall: 0.8281
 ----------------------------------------------------------------------------------------------------
 11th try        (similar to 6th try)
 NOTE: We also increased accuracy to float64 (instead of float32)
+NOTE: We have linear kernel instead of RBF for SVC (differs from 6th try)
 (Public score: 0.81438, Val: 0.8193, Cross-Val: 0.8179)
 Extract Features: 
     - ECG features (RR_interval, heart_rate, PR_interval, QRS_duration, QT_interval, ST_segment, P_amplitude, Q_amplitude, R_amplitude, S_amplitude, T_amplitude, T_wave_duration, P_wave_duration).
