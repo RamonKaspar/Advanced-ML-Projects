@@ -113,8 +113,8 @@ def main():
         estimators=[
             ('hgb', hgb_model),
             ('xgb', xgb_model),
-            ('svc', svm.SVC(
-                kernel='rbf', 
+            ('svc_lin', svm.SVC(
+                kernel='linear', 
                 class_weight='balanced', 
                 probability=True    
             ))
@@ -125,10 +125,9 @@ def main():
     )
     
     model_pipeline = ImbPipeline([
-        ('imputer', impute.SimpleImputer(strategy='most_frequent')),
-        ('scaler', preprocessing.StandardScaler()),
+        ('imputer', impute.SimpleImputer(strategy='mean')),
+        ('scaler', preprocessing.MinMaxScaler(feature_range=(-1, 1))),
         ('oversampler', over_sampling.RandomOverSampler(random_state=RANDOM_STATE)),
-        # ('oversampler', over_sampling.KMeansSMOTE(random_state=RANDOM_STATE)),
         ('classifier', stacking_clf)
     ])
     
@@ -209,6 +208,11 @@ def extract_features_single_signal(signal_data):
         'P_amplitude': [], 'Q_amplitude': [], 'R_amplitude': [], 'S_amplitude': [], 'T_amplitude': [],
         'RR_interval': [], 'Heart_rate': [], 'P_wave_duration': [], 'T_wave_duration': []
     }
+    
+    # Check if signal is too short
+    if len(signal) < SAMPLING_RATE:  
+        print("INFO: Signal too short, skipping...")
+        return idx, {feature: np.nan for feature in features.keys()}
         
     # R-peaks
     ts, filtered, rpeaks, templates_ts, templates, heart_rate_ts, heart_rate = ecg.ecg(signal=signal, sampling_rate=SAMPLING_RATE, show=False)
@@ -303,21 +307,24 @@ def calculate_statistical_features(features):
     """
     statistics = {}
     for feature_name, values in features.items():
-        statistics[f'{feature_name}_mean'] = np.nanmean(values)            if len(values) > 0 else np.nan
-        statistics[f'{feature_name}_std'] = np.nanstd(values)              if len(values) > 0 else np.nan
-        statistics[f'{feature_name}_min'] = np.nanmin(values)              if len(values) > 0 else np.nan
-        statistics[f'{feature_name}_max'] = np.nanmax(values)              if len(values) > 0 else np.nan
-        statistics[f'{feature_name}_median'] = np.nanmedian(values)        if len(values) > 0 else np.nan
-        statistics[f'{feature_name}_mad'] = stats.median_abs_deviation(values, nan_policy="omit") if len(values) > 0 else np.nan
-        statistics[f'{feature_name}_q25'] = np.nanpercentile(values, 25)   if len(values) > 0 else np.nan
-        statistics[f'{feature_name}_q75'] = np.nanpercentile(values, 75)   if len(values) > 0 else np.nan
-        statistics[f'{feature_name}_iqr'] = stats.iqr(values, nan_policy="omit") if len(values) > 0 else np.nan
-        statistics[f'{feature_name}_var'] = np.nanvar(values)              if len(values) > 0 else np.nan
-        statistics[f'{feature_name}_ptp'] = (np.nanmax(values) - np.nanmin(values)) if len(values) > 0 else np.nan # Peak-to-peak
-        statistics[f'{feature_name}_entropy'] = entropy(values)         if len(values) > 0 else np.nan
-        statistics[f'{feature_name}_skewness'] = stats.skew(values, nan_policy="omit") if len(values) > 1 else np.nan  # Skewness, measure of asymmetry
-        statistics[f'{feature_name}_kurtosis'] = stats.kurtosis(values, nan_policy="omit") if len(values) > 1 else np.nan  # Kurtosis, measure of tailedness
-        statistics[f'{feature_name}_energy'] = np.nansum(np.square(values)) if len(values) > 0 else np.nan
+        values = np.array(values)
+        not_all_nan = np.sum(~np.isnan(values)) > 0
+        
+        statistics[f'{feature_name}_mean'] = np.nanmean(values)            if len(values) > 1 and not_all_nan else np.nan
+        statistics[f'{feature_name}_std'] = np.nanstd(values)              if len(values) > 1 and not_all_nan else np.nan
+        statistics[f'{feature_name}_min'] = np.nanmin(values)              if len(values) > 1 and not_all_nan else np.nan
+        statistics[f'{feature_name}_max'] = np.nanmax(values)              if len(values) > 1 and not_all_nan else np.nan
+        statistics[f'{feature_name}_median'] = np.nanmedian(values)        if len(values) > 2 and not_all_nan else np.nan
+        statistics[f'{feature_name}_mad'] = stats.median_abs_deviation(values, nan_policy="omit") if len(values) > 2 and not_all_nan else np.nan
+        statistics[f'{feature_name}_q25'] = np.nanpercentile(values, 25)   if len(values) > 1 and not_all_nan else np.nan
+        statistics[f'{feature_name}_q75'] = np.nanpercentile(values, 75)   if len(values) > 1 and not_all_nan else np.nan
+        statistics[f'{feature_name}_iqr'] = stats.iqr(values, nan_policy="omit") if len(values) > 1 and not_all_nan else np.nan
+        statistics[f'{feature_name}_var'] = np.nanvar(values)              if len(values) > 1 and not_all_nan else np.nan
+        statistics[f'{feature_name}_ptp'] = (np.nanmax(values) - np.nanmin(values)) if len(values) > 1 and not_all_nan else np.nan # Peak-to-peak
+        statistics[f'{feature_name}_entropy'] = entropy(values)         if len(values) > 1 and not_all_nan else np.nan
+        statistics[f'{feature_name}_skewness'] = stats.skew(values, nan_policy="omit") if (len(values) > 2 and np.std(values) > 1e-7) and not_all_nan else np.nan  # Skewness, measure of asymmetry
+        statistics[f'{feature_name}_kurtosis'] = stats.kurtosis(values, nan_policy="omit") if (len(values) > 2 and np.std(values) > 1e-7) and not_all_nan else np.nan  # Kurtosis, measure of tailedness
+        statistics[f'{feature_name}_energy'] = np.nansum(np.square(values)) if len(values) > 0 and not_all_nan else np.nan
     return statistics
 
 
