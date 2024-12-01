@@ -141,3 +141,22 @@ Class 2: 0.7426
 Class 3: 0.7586
 Overall: 0.8438
 ----------------------------------------------------------------------------------------------------
+13th try
+(Public score: 0.81786, Val: 0.8457, Cross-Val: --)
+Extract Features: 
+    - ECG features (RR_interval, heart_rate, PR_interval, QRS_duration, QT_interval, ST_segment, P_amplitude, Q_amplitude, R_amplitude, S_amplitude, T_amplitude, T_wave_duration, P_wave_duration).
+    - FFT, Wavelet and Autocorrelation features
+Compute Stats: mean, std, median, min, max, q25, q75, ptp, entropy, mad, iqr, var, skewness, kurtosis, energy.
+==> 218 Features in total
+Imputer (most_frequent), StandardScaler
+RandomOverSampler
+Model: StackingClassifier (HGB, XGBClassifier, SVC with RBF) with final LR
+
+VALIDATION SET (10% split):
+Cross-Validation Score (5 splits): --
+Class 0: 0.8934
+Class 1: 0.8235
+Class 2: 0.7546
+Class 3: 0.7143
+Overall: 0.8457
+----------------------------------------------------------------------------------------------------

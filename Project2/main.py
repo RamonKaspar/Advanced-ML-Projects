@@ -125,9 +125,10 @@ def main():
     )
     
     model_pipeline = ImbPipeline([
-        ('imputer', impute.SimpleImputer(strategy='mean')),
+        ('imputer', impute.SimpleImputer(strategy='most_frequent')),
         ('scaler', preprocessing.StandardScaler()),
         ('oversampler', over_sampling.RandomOverSampler(random_state=RANDOM_STATE)),
+        # ('oversampler', over_sampling.KMeansSMOTE(random_state=RANDOM_STATE)),
         ('classifier', stacking_clf)
     ])
     
