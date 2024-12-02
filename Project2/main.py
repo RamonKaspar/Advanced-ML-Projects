@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from imblearn import over_sampling
+from imblearn import over_sampling, under_sampling
 from imblearn.pipeline import Pipeline as ImbPipeline
 from sklearn import svm, metrics, model_selection, preprocessing, impute, ensemble, feature_selection, linear_model, pipeline, decomposition
 from biosppy.signals import ecg
@@ -47,7 +47,7 @@ def main():
     if not PREDICTION:
         # Create train/test split (90/10)
         X_train, X_test, y_train, y_test = model_selection.train_test_split(
-            X_train, y_train, test_size=0.1, random_state=RANDOM_STATE,
+            X_train, y_train, test_size=0.2, random_state=RANDOM_STATE,
             stratify=y_train  # Add stratification to maintain class distribution
         ) 
         # Limit samples if specified
@@ -106,15 +106,15 @@ def main():
     
     meta_model = linear_model.LogisticRegression(
         random_state=RANDOM_STATE, 
-        class_weight='balanced'
+        class_weight='balanced',
     )
     
     stacking_clf = ensemble.StackingClassifier(
         estimators=[
             ('hgb', hgb_model),
             ('xgb', xgb_model),
-            ('svc_lin', svm.SVC(
-                kernel='linear', 
+            ('svc', svm.SVC(
+                kernel='poly', 
                 class_weight='balanced', 
                 probability=True    
             ))
@@ -127,7 +127,7 @@ def main():
     model_pipeline = ImbPipeline([
         ('imputer', impute.SimpleImputer(strategy='mean')),
         ('scaler', preprocessing.MinMaxScaler(feature_range=(-1, 1))),
-        ('oversampler', over_sampling.RandomOverSampler(random_state=RANDOM_STATE)),
+        ('under_sampler', over_sampling.RandomOverSampler()),
         ('classifier', stacking_clf)
     ])
     
