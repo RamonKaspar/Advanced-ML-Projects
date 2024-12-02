@@ -24,4 +24,14 @@ Our workflow includes handling missing data, identifying and removing outliers, 
 
 ## Project 2: Heart rhythm classification from raw ECG signals
 
-This project focuses on classifying time-series data from electrocardiogram (ECG) signals, which capture heart electrical activity. The challenge involves handling variable-length signals and addressing NaNs in the data, with a goal of accurate classification through effective signal processing and feature extraction.
+This project aims to classify time-series data from electrocardiogram (ECG) signals, capturing the electrical activity of the heart. The challenge lies in handling variable-length signals, addressing missing data, and extracting meaningful numerical features to build an accurate classification model. The dataset is highly imbalanced, with the majority class (Class 0) comprising 59.2% of samples and the minority class (Class 3) only 3.3%.
+
+Our workflow involved preprocessing the raw ECG signals, including the detection of R-peaks and delineation of characteristic waveforms using the `biosppy` and `neurokit2` libraries. Features such as RR intervals, heart rate, PR intervals, QRS duration, and wave amplitudes (P, Q, R, S, T) were extracted. For each of these signals, we calculated statistical features including mean, standard deviation, median, skewness, kurtosis, entropy, and others, resulting in a comprehensive feature set of 218 numerical features per signal.
+
+To address the class imbalance, we applied random oversampling of the minority classes. The data was imputed using mean imputation and scaled to the range [-1, 1] using MinMaxScaler.
+
+For classification, we implemented a stacking model combining Histogram Gradient Boosting, XGBoost, and Support Vector Classifier, with Logistic Regression as the meta-classifier. This ensemble approach demonstrated robust performance, particularly for minority classes, achieving the a F1-score (micro-averaged) of 0.8369 on a 20% validation split.
+
+The plot below visualizes the feature extraction process, showcasing R-peak detection and heartbeat templates derived from raw ECG signals (using `biosppy`):
+
+![](Project2/plots/ecg_template_analysis.png)
