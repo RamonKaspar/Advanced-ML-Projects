@@ -1,4 +1,4 @@
-# Advanced Machine Learning (ETH, Autumn 2024)
+# Advanced Machine Learning (ETH, Fall 2024)
 
 Coding assignments of the "Advanced Machine Learning" course at ETH Zürich (Fall 2024).
 
